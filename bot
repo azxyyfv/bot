@@ -113,10 +113,9 @@ async def main():
     async with bot:
         await bot.start(TOKEN)
 
-# If running in an environment with an existing event loop
+# Run command for Replit
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
-        loop.create_task(main())
+    keep_alive()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(main())
