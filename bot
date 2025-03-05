@@ -1,0 +1,122 @@
+import discord
+from discord.ext import commands
+import asyncio
+import random
+import os
+from flask import Flask
+from threading import Thread
+
+# Define bot intents
+intents = discord.Intents.default()
+intents.members = True
+
+# Create bot instance
+bot = commands.Bot(command_prefix="/", intents=intents)
+
+tree = bot.tree  # Used for slash commands
+
+# Create a simple web server to keep the bot alive
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+    try:
+        await bot.tree.sync()
+        print(f'Slash commands synced!')
+    except Exception as e:
+        print(f'Error syncing commands: {e}')
+
+# Basic Commands
+@tree.command(name="hello", description="Say hello to the bot!")
+async def hello(interaction: discord.Interaction):
+    await interaction.response.send_message(f'Hello, {interaction.user.mention}!')
+
+@tree.command(name="ping", description="Check bot latency")
+async def ping(interaction: discord.Interaction):
+    await interaction.response.send_message(f'Pong! {round(bot.latency * 1000)}ms')
+
+# Moderation Commands
+@tree.command(name="kick", description="Kick a user from the server")
+async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
+    if interaction.user.guild_permissions.kick_members:
+        await member.kick(reason=reason)
+        await interaction.response.send_message(f'Kicked {member.mention} for {reason}')
+    else:
+        await interaction.response.send_message("You do not have permission to use this command!", ephemeral=True)
+
+@tree.command(name="ban", description="Ban a user from the server")
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "No reason provided"):
+    if interaction.user.guild_permissions.ban_members:
+        await member.ban(reason=reason)
+        await interaction.response.send_message(f'Banned {member.mention} for {reason}')
+    else:
+        await interaction.response.send_message("You do not have permission to use this command!", ephemeral=True)
+
+@tree.command(name="unban", description="Unban a user from the server")
+async def unban(interaction: discord.Interaction, user: str):
+    if interaction.user.guild_permissions.ban_members:
+        banned_users = await interaction.guild.bans()
+        for entry in banned_users:
+            if user in str(entry.user):
+                await interaction.guild.unban(entry.user)
+                await interaction.response.send_message(f'Unbanned {entry.user.mention}')
+                return
+        await interaction.response.send_message("User not found in ban list.")
+    else:
+        await interaction.response.send_message("You do not have permission to use this command!", ephemeral=True)
+
+# Fun Commands
+@tree.command(name="roll", description="Roll a random number between 1 and 100")
+async def roll(interaction: discord.Interaction):
+    number = random.randint(1, 100)
+    await interaction.response.send_message(f'🎲 You rolled a {number}!')
+
+# Utility Commands
+@tree.command(name="serverinfo", description="Get server information")
+async def serverinfo(interaction: discord.Interaction):
+    guild = interaction.guild
+    embed = discord.Embed(title=guild.name, description=f'Server ID: {guild.id}', color=discord.Color.blue())
+    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+    embed.add_field(name="Members", value=guild.member_count)
+    embed.add_field(name="Owner", value=guild.owner.mention)
+    await interaction.response.send_message(embed=embed)
+
+@tree.command(name="userinfo", description="Get information about a user")
+async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
+    member = member or interaction.user
+    embed = discord.Embed(title=member.name, description=f'User ID: {member.id}', color=discord.Color.green())
+    embed.set_thumbnail(url=member.avatar.url if member.avatar else None)
+    embed.add_field(name="Joined", value=member.joined_at.strftime("%Y-%m-%d"))
+    embed.add_field(name="Account Created", value=member.created_at.strftime("%Y-%m-%d"))
+    await interaction.response.send_message(embed=embed)
+
+# Keep bot alive
+keep_alive()
+
+# Securely retrieve bot token from environment variables
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+
+# Run the bot with your token using asyncio event loop
+async def main():
+    async with bot:
+        await bot.start(TOKEN)
+
+# If running in an environment with an existing event loop
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        loop = asyncio.get_event_loop()
+        loop.create_task(main())
